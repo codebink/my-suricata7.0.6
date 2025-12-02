@@ -1,0 +1,65 @@
+{
+  "base": {
+    "version": "1.0.0",
+    "mysql_pool_size": 10,
+    "mysql_max_buffer_size": 10240,
+    "mysql_max_interval_time": 0,
+    "mysql_pool_channel_size": 1024
+  },
+  "topics": [
+     {
+      "name": "flow",
+      "group_id": "flow_group",
+      "storage_type": "mysql",
+      "consume_num": 2,
+      "db_name" : "bvm_data",
+      "table_name" : "flow",
+      "column" : {"timestamp":"varchar(64)","flow_id":"bigint(20)","app_proto":"varchar(64)","community_id":"varchar(255)","syn":"null","icmp_code":"null","rst":"null","response_icmp_code":"null","response_icmp_type":"null","ts_gap":"null","icmp_type":"null","tc_gap":"null","app_proto_ts":"null","src_port":"int","dest_port":"int","vlan":"null","app_proto_tc":"null","tcp_flags_tc":"null","tcp_flags_ts":"null","ts_max_regions":"null","tcp_flags":"null","fin":"null","ack":"null","tc_max_regions":"null","psh":"null","ecn":"null","cwr":"null","parent_id":"null","urg":"null"}
+    },
+    {
+      "name": "alert",
+      "group_id": "alert_group",
+      "storage_type": "mysql",
+      "consume_num": 2,
+      "db_name" : "bvm_data",
+      "table_name" : "db_alert",
+      "column" : {"timestamp":"varchar(64)","flow_id":"bigint(20)","u_timestamp":"BIGINT","event_type":"varchar(255)","app_proto":"varchar(64)","proto":"varchar(64)","signature":"varchar(1024)","category":"varchar(255)","hostname":"varchar(255)","url":"varchar(1024)","http_user_agent":"varchar(1024)","http_content_type":"varchar(64)","http_refer":"varchar(1024)","http_method":"varchar(64)","protocol":"varchar(64)","status":"varchar(64)","length":"int","direction":"varchar(64)","community_id":"varchar(255)","action":"null","protocol":"varchar(64)","src_ip":"varchar(64)","src_port":"int","src_mac":"varchar(255)","dest_ip":"varchar(64)","dest_port":"int","dest_mac":"varchar(255)","direction":"varchar(64)","signature":"varchar(1024)","signature_id":"int","start":"varchar(255)","rev":"null","redirect":"null","pcap_cnt":"null","host_name":"null","pkt_src":"null","status":"null","tx_id":"null","length":"null","gid":"null","severity":"null","http_port":"null","in_iface":"null"}
+    },
+    {
+      "name": "mysql",
+      "group_id": "db_group",
+      "storage_type": "mysql",
+      "consume_num": 2,
+      "db_name" : "bvm_data",
+      "table_name" : "mysql",
+      "column" : {"timestamp":"varchar(64)","flow_id":"bigint(20)","u_timestamp":"BIGINT","db_name":"varchar(255)","table_name":"varchar(1024)","sql_cmd":"TEXT","result_set":"TEXT","passwd":"varchar(255)","client_ip":"varchar(255)","client_name":"varchar(255)","host_name":"varchar(255)","server_version":"varchar(255)","client_version":"varchar(255)","version":"varchar(255)","in_iface":"varchar(255)","link_time":"varchar(255)","system_name":"varchar(255)","pcap_cnt":"null"}
+    },
+    {
+      "name": "kingbase",
+      "group_id": "db_group",
+      "storage_type": "mysql",
+      "consume_num": 2,
+      "db_name" : "bvm_data",
+      "table_name" : "kingbase",
+      "column" : {"timestamp":"varchar(64)","flow_id":"bigint(20)","u_timestamp":"BIGINT","db_name":"varchar(255)","table_name":"varchar(1024)","sql_cmd":"TEXT","result_set":"TEXT","passwd":"varchar(255)","client_ip":"varchar(255)","client_name":"varchar(255)","host_name":"varchar(255)","server_version":"varchar(255)","client_version":"varchar(255)","version":"varchar(255)","in_iface":"varchar(255)","link_time":"varchar(255)","system_name":"varchar(255)","pcap_cnt":"null"}
+    },
+    {
+      "name": "dmdb",
+      "group_id": "db_group",
+      "storage_type": "mysql",
+      "consume_num": 2,
+      "db_name" : "bvm_data",
+      "table_name" : "dmdb",
+      "column" : {"timestamp":"varchar(64)","flow_id":"bigint(20)","u_timestamp":"BIGINT","db_name":"varchar(255)","table_name":"varchar(1024)","sql_cmd":"TEXT","result_set":"TEXT","passwd":"varchar(255)","client_ip":"varchar(255)","client_name":"varchar(255)","host_name":"varchar(255)","server_version":"varchar(255)","client_version":"varchar(255)","version":"varchar(255)","in_iface":"varchar(255)","link_time":"varchar(255)","system_name":"varchar(255)","pcap_cnt":"null"}
+    },
+    {
+      "name": "prismdlp",
+      "group_id": "prismdlp_group",
+      "storage_type": "mysql",
+      "consume_num": 2,
+      "db_name" : "bvm_data",
+      "table_name" : "prismdlp",
+      "column" : {"timestamp":"varchar(64)","u_timestamp":"BIGINT","magic":"varchar(1024)","sensitive_file":"varchar(1024)","flow_id":"bigint(20)","parent_id":"bigint(20)"}
+    }
+   ]
+}

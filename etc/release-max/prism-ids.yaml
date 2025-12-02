@@ -1,0 +1,2346 @@
+﻿%YAML 1.1
+---
+
+# Suricata 配置文件。除了描述所有的评论外
+# 选项，完整的文档可以在以下位置找到：
+# https://docs.suricata.io/en/latest/configuration/suricata-yaml.html
+
+# 该配置文件由 Suricata 7.0.6 生成。
+suricata-version: "7.0"
+
+##
+## 第一步：告知 Suricata 你的网络信息
+##
+
+vars:
+  # 越具体越有助于提高告警的准确性和性能
+  address-groups:
+    HOME_NET: "[192.168.0.0/16,10.0.0.0/8,172.16.0.0/12]"
+    #HOME_NET: "[192.168.0.0/16]"
+    #HOME_NET: "[10.0.0.0/8]"
+    #HOME_NET: "[172.16.0.0/12]"
+    #HOME_NET: "any"
+
+    EXTERNAL_NET: "!$HOME_NET"
+    #EXTERNAL_NET: "any"
+
+    HTTP_SERVERS: "$HOME_NET"
+    SMTP_SERVERS: "$HOME_NET"
+    SQL_SERVERS: "$HOME_NET"
+    DNS_SERVERS: "$HOME_NET"
+    TELNET_SERVERS: "$HOME_NET"
+    AIM_SERVERS: "$EXTERNAL_NET"
+    DC_SERVERS: "$HOME_NET"
+    DNP3_SERVER: "$HOME_NET"
+    DNP3_CLIENT: "$HOME_NET"
+    MODBUS_CLIENT: "$HOME_NET"
+    MODBUS_SERVER: "$HOME_NET"
+    ENIP_CLIENT: "$HOME_NET"
+    ENIP_SERVER: "$HOME_NET"
+
+  port-groups:
+    HTTP_PORTS: "80"
+    SHELLCODE_PORTS: "!80"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+    FILE_DATA_PORTS: "[$HTTP_PORTS,110,143]"
+    FTP_PORTS: 21
+    GENEVE_PORTS: 6081
+    VXLAN_PORTS: 4789
+    TEREDO_PORTS: 3544
+
+##
+## 第二步：选择要启用的输出
+##
+
+# 默认日志目录。 任何日志或输出文件都将是
+# 如果未指定完整路径名，则放置在此处。这可以是
+# 使用 -l 命令行参数覆盖。
+default-log-dir: /var/log/prism/
+
+# 全局统计配置
+stats:
+  enabled: yes
+  # 间隔字段（以秒为单位）控制
+  # 日志中更新了哪些统计信息。
+  interval: 8
+  # 将解码事件添加到统计信息中。
+  #decoder-events: true
+  # 统计信息中的解码器事件前缀。以前一直是“解码器”，但这导致了
+  # 到 eve.stats 记录中缺失的事件。请参阅问题 #2225。
+  #decoder-events-prefix: "decoder.event"
+  # 将流事件添加到统计信息中。
+  #stream-events: false
+
+# 插件 -- 实验性 -- 为每个插件共享对象指定文件名
+plugins:
+#   - /path/to/plugin.so
+
+# 配置你想要的告警（以及其他）日志类型。
+outputs:
+  # 类似于 Snort 的 fast.log 的基于行的告警日志
+  - fast:
+      enabled: no
+      #filename: fast.log
+      filename: fast-%Y-%m-%d-%H:%M.log
+      append: yes
+      rotate-interval: 60
+      filemode: 777
+      filetype: regular # 'regular', 'unix_stream' or 'unix_dgram'
+
+  # 可扩展事件格式（昵称为 EVE）的 JSON 格式事件日志
+  - eve-log:
+      json:
+        # 按照插入的顺序对对象键进行排序
+        preserve-order: yes
+
+        # 使输出更紧凑
+        compact: no
+
+        # 转义所有超出 ASCII 范围的 Unicode 字符
+        ensure-ascii: yes
+
+        # 将字符串中的 '/' 字符转义为 '\/'
+        escape-slash: yes
+
+      enabled: yes
+      #filetype: redis #regular|syslog|unix_dgram|unix_stream|redis
+      filetype: regular #regular|syslog|unix_dgram|unix_stream|redis
+      #filename: eve.json
+      filename: eve-%Y-%m-%d-%H:%M.json
+      rotate-interval: 60
+      filemode: 777
+      #conditional: alerts
+      conditional:
+      #- http
+
+      # 启用多线程eve.json输出;输出文件修改为
+      # 标识符，例如 eve.9.json
+      #threaded: true
+      #prefix: "@cee: " # 要加在每个日志条目前的前缀
+      # 当类型为 syslog 时，以下选项有效
+      #identity: "prism"
+      #facility: local5
+      #level: Info ## 可能的级别: Emergency, Alert, Critical,
+                   ## Error, Warning, Notice, Info, Debug
+      ethernet: yes  # 在事件中记录以太网头（如果可用）
+      redis:
+        server: 127.0.0.1
+        port: 6379
+        async: true ## 如果 Redis 的回复是异步读取的
+        mode: list ## 可能的值: list|lpush (default), rpush, channel|publish
+                   ## lpush 和 rpush 使用 Redis 列表。“list” 是 lpush 的别名
+                   ## publish 使用 Redis 通道。“channel” 是 publish 的别名
+        key: http ## 要使用的键或通道（默认为 prism）
+      # Redis 流水线设置。这将使每个查询仅允许执行一次查询
+      # 'batch-size' 事件。这应该会降低网络引起的延迟
+      # 以一些内存为代价进行连接。未实施刷新
+      # 因此，此设置应保留给高流量的 Suricata 部署。
+        pipelining:
+          enabled: yes ## 将 enable 设置为 yes 以启用查询管道
+          batch-size: 10 ## 在缓冲区中保留的条目数量
+
+      # 包含顶级元数据。默认是“是”。
+      metadata: no
+
+      # 在 pcap 文件处理模式中包含输入 pcap 文件的名称
+      pcap-file: false
+
+      # 社区流 ID
+      # 向 EVE 记录添加 'community_id' 字段。这些是为了给
+      # 记录一个可预测的流 ID，可用于将记录匹配到
+      # Zeek（Bro）等其他工具的输出。
+      #
+      # 需要一个“种子”，该“种子”需要在传感器和工具之间保持一致
+      # 使 ID 的可预测性降低。
+
+      # 启用/关闭社区 ID 功能。
+      community-id: true
+      # ID 输出的种子值。有效值为 0-65535。
+      community-id-seed: 65533
+
+      # HTTP X-Forwarded-For 支持，通过添加额外字段或覆盖
+      # 源或目标 IP 地址（取决于流向）
+      # 替换为 X-Forwarded-For HTTP 标头中报告的那个。这是
+      # 在查看正在倒车的流量警报时很有帮助
+      # 或转发代理。
+      xff:
+        enabled: no
+        # 有两种操作模式： “extra-data” 和 “overwrite”。
+        mode: extra-data
+        # 支持两种代理部署：“反向”和“正向”。在
+        # “反向”部署，使用的 IP 地址是最后一个，在一个
+        # “前向”部署，使用第一个 IP 地址。
+        deployment: reverse
+        # 将报告实际 IP 地址的标头名称。如果更多
+        # 存在一个以上的 IP 地址，最后一个 IP 地址将是
+        # 一个被考虑在内。
+        header: X-Forwarded-For
+
+      types:
+        - alert:
+            enabled: yes
+            # payload: yes             # 启用以 Base64 形式转储负载
+            # payload-buffer-size: 4kb # 在 eve-log 中输出的最大负载缓冲区大小
+            # payload-printable: yes   # 启用以可打印（有损）格式转储负载
+            # packet: yes              # 启用数据包（不包含流片段）的转储
+            # metadata: no             # 启用在告警中包含应用层元数据。默认是“是”。
+            # http-body: yes           # 需要元数据；启用将 HTTP 正文转储为 Base64
+            # http-body-printable: yes # 需要元数据；启用将 HTTP 正文转储为可打印格式
+
+            # 使用
+            # “tag” 关键字。
+            tagged-packets: yes
+            # 启用记录引擎对数据包执行的最终操作的功能
+            # （例如：警报可能具有“允许”操作，但判决是
+            # 由于另一个警报而“丢弃”。这是引擎的判决）
+            # verdict: yes
+        # 应用层帧
+        - frame:
+            # 默认情况下禁用，因为这非常详细。
+            enabled: no
+        - anomaly:
+            # 异常日志记录描述了意外情况，例如
+            # 作为截断的数据包，具有无效 IP/UDP/TCP 的数据包
+            # 长度值，以及呈现数据包的其他事件
+            # 对于进一步处理无效或描述意外
+            # 已建立流上的行为。哪些网络
+            # 体验 可能出现的异常情况较高
+            # 数据包处理降级。
+            #
+            # 报告的异常情况如下：
+            # 1.解码：在
+            # 对单个数据包进行解码。这包括无效或
+            # 低级协议长度的意外值也是如此
+            # 作为流相关事件（TCP 3 向握手问题、
+            # 意外的序列号等）。
+            # 2.流：这包括与流相关的事件 （TCP
+            # 3 向握手问题，意外的序列号，
+            # 等）。
+            # 3.应用层：这些表示应用层
+            # 出乎意料的、无效的或
+            # 鉴于应用程序监控状态，这是意外的。
+            #
+            # 默认情况下，异常日志记录处于启用状态。当异常时
+            # 日志记录已启用，applayer 异常报告已启用
+            # 也已启用。
+            enabled: no
+            #
+            # 选择一种或多种异常日志记录类型，并决定是否启用
+            # 对数据包异常的包头日志记录。
+            types:
+              # decode: no
+              # stream: no
+              # applayer: yes
+            #packethdr: no
+        - mysql
+        - mariadb
+        - db2
+        - dmdb
+        - tidb
+        - hana
+        - kingbase
+        - cassandra
+        - radius
+        - redis
+        - mongodb
+        - ldap
+        - gitsmart
+        - sqlserver
+        - oracle
+        - http:
+            extended: yes     # 启用此功能以获取扩展的日志信息
+            # 自定义允许在 eve-log 中包含其他 HTTP 字段
+            # 下面的示例在取消注释时添加了三个额外的字段
+            #custom: [Accept-Encoding, Accept-Language, Authorization]
+            # 将此值设置为 {both, request, response} 中的一个且仅一个
+            # 以转储每个 HTTP 请求和/或响应的所有 HTTP 头
+            #dump-all-headers: none
+            dump-all-headers: both
+        - dns:
+            # 此配置使用新的 DNS 日志格式，
+            # 旧的配置仍然可用：
+            # https://docs.suricata.io/en/latest/output/eve/eve-json-output.html#dns-v1-format
+
+            # 从 Suricata 5.0 开始，eve dns 输出的版本 2
+            # 格式是默认格式。
+            version: 2
+
+            # 启用/禁用此日志记录器。默认：启用。
+            enabled: no
+
+            # 控制请求和响应的日志记录：
+            # - requests：启用 DNS 查询的日志记录
+            # - responses：启用 DNS 应答的日志记录
+            # 默认情况下，请求和响应都会被记录。
+            requests: yes
+            responses: yes
+
+            # 应答日志记录的格式：
+            # - detailed: 每个应答作为一个数组项
+            # - grouped: 按类型聚合应答
+            Default: all
+            #formats: [detailed, grouped]
+
+            # 根据查询类型记录的 DNS 记录类型。
+            # Default: all.
+            types: [a, aaaa, cname, mx, ns, ptr, txt]
+            #types: [a, ns, md, mf, cname, soa, mb, mg, mr, null, wks, ptr, hinfo, minfo, mx, txt, rp, afsdb, x25, isdn, rt, nsap, nsapptr, sig, key, px, gpos, aaaa, loc, nxt, srv, atma, naptr, kx, cert, a6, dname, opt, apl, ds, sshfp, ipseckey, rrsig, nsec, dnskey, dhcid, nsec3, nsec3param, tlsa, hip, cds, cdnskey, spf, tkey, tsig, maila, any, uri]
+        - tls:
+            enabled: no
+            extended: no     # 启用此功能以获取扩展的日志信息
+            # 输出会话恢复时的 TLS 事务
+            certificate: yes
+            chain: no
+            # session id
+            session-resumption: yes
+            # ja4 hashes in tls records will never be logged unless
+            # the following is set to on. (Default off)
+            # ja4: off
+            # custom 控制包含在 eve-log 中的 TLS 字段
+            #custom: [subject, issuer, session_resumed, serial, fingerprint, sni, version, not_before, not_after, certificate, chain, ja3, ja3s, ja4]
+            custom: [subject, issuer, session_resumed, serial, fingerprint, sni, version, not_before, not_after, certificate]
+        - files:
+            enabled: yes
+            force-magic: yes   # 强制记录所有已记录文件的 magic
+            # 强制记录校验和，可用的哈希函数是md5，
+            # sha1 and sha256
+            force-hash: [md5]
+        - drop:
+            enabled: no
+            alerts: yes      # 记录导致丢包的警报
+            flows: all       # start 或 all：'start' 仅记录每个流方向的单个丢包。
+                             # all 记录每个丢弃的数据包
+            # 启用记录引擎对数据包采取的最终操作
+            # （如果由于 'reject' 导致丢包，将显示更多信息）
+            verdict: yes
+        - smtp:
+            enabled: no
+            extended: yes # 启用此功能以获取扩展的日志信息
+            # 这包括：bcc、message-id、subject、x_mailer、user-agent
+            # 自定义字段日志记录列表：
+            #  reply-to, bcc, message-id, subject, x-mailer, user-agent, received,
+            #  x-originating-ip, in-reply-to, references, importance, priority,
+            #  sensitivity, organization, content-md5, date
+            custom: [reply-to, bcc, subject, x-mailer, user-agent, received, x-originating-ip, references, date]
+            # 输出字段的 md5：body、subject
+            # 对于 body，你需要将 app-layer.protocols.smtp.mime.body-md5
+            # 设置为 yes
+            #md5: [body, subject]
+
+        #- dnp3
+        - ftp
+        #- rdp
+        #- nfs
+        #- smb
+        #- tftp
+        #- ike
+        #- dcerpc
+        - krb5
+        #- bittorrent-dht
+        #- snmp
+        #- rfb
+        #- sip
+        #- quic:
+            # ja4 hashes in quic records will never be logged unless
+            # the following is set to on. (Default off)
+            # ja4: off
+        - dhcp:
+            enabled: no
+            # 当扩展模式开启时，所有DHCP消息都会被记录下来
+            # 详细说明。当扩展模式关闭时（
+            # default），刚好有足够的信息来映射 MAC 地址
+            # 到一个 IP 地址被记录下来。
+            extended: no
+        #- ssh
+        - mqtt:
+          enabled: no
+            # passwords: yes           #启用密码输出
+        #- http2
+        - pgsql:
+            enabled: yes
+            # passwords: yes           # 启用密码输出。默认情况下禁用
+        #- stats:
+            #totals: no       # 合并在一起的所有线程的统计信息
+            #threads: no       # 每个线程统计信息
+            #deltas: no        # 包括增量值
+        # 双向流动
+        - flow
+        # 单向流动
+        #- netflow
+
+        # 元数据事件类型。每当保存 pktvar 时触发
+        # 并将包括 pktvars、flowvars、flowbits 和
+        # flowints。
+        #- metadata
+
+        # EXPERIMENTAL 每个数据包输出提供 TCP 状态跟踪详细信息
+        # 包括内部状态、标志等。
+        # 此输出是实验性的，用于调试并受制于
+        # 在没有任何通知的情况下更改了配置和输出。
+        #- stream:
+        #   all: false                      # 记录所有 TCP 数据包
+        #   event-set: false                # 记录具有解码器/流事件的数据包
+        #   state-update: false             # 记录触发 TCP 状态更新的数据包
+        #   spurious-retransmission: false  # 记录虚假重传数据包
+
+  # 基于行的 HTTP 请求日志（无警报）
+  - http-log:
+      enabled: no
+      filename: http.log
+      append: yes
+      extended: yes     # 启用此选项可获取扩展的日志记录信息
+      custom: yes       # 启用自定义日志记录格式（由 CustomFormat 定义）
+      customformat: "%{%D-%H:%M:%S}t.%z %{X-Forwarded-For}i %H %m %h %u %s %B %a:%p -> %A:%P"
+      filetype: regular # 'regular', 'unix_stream' or 'unix_dgram'
+
+  # 基于行的 TLS 握手参数日志（无警报）
+  - tls-log:
+      enabled: no  # 记录 TLS 连接。
+      filename: tls.log # 用于存储 TLS 日志的文件。
+      append: yes
+      #extended: yes     # 记录指纹等扩展信息
+      #custom: yes       # 启用自定义日志记录格式（由 customformat 定义）
+      #customformat: "%{%D-%H:%M:%S}t.%z %a:%p -> %A:%P %v %n %d %D"
+      #filetype: regular # 'regular', 'unix_stream' or 'unix_dgram'
+      # 输出 TLS 事务，其中
+      # 使用会话 ID
+      #session-resumption: no
+
+  # 输出模块，用于将证书链存储到磁盘
+  - tls-store:
+      enabled: no
+      certs-log-dir: certs # 用于存储证书文件的目录
+
+  # 数据包日志...以 PCAP 格式记录数据包。3 种操作模式：“正常”
+  # “多”和“sguil”。
+  #
+  # 在正常模式下，会在 default-log-dir 中创建 pcap 文件 “filename”，
+  # 或由 “dir” 指定。
+  # 在多模式下，每个线程创建一个文件。这将发挥很大的作用
+  # 更好，但会创建多个文件，而“正常”会创建一个。
+  # 在多模式中，文件名需要一些特殊变量：
+  # - %n -- 线程数
+  # - %i -- 线程 ID
+  # - %t -- 时间戳 （secs 或 secs.usecs 基于 'ts-format'
+  # 例如文件名：pcap.%n.%t
+  #
+  # 注意，可以使用目录，但目录不能
+  # 由 Suricata 创建。例如文件名：pcaps/%n/log.%s 将登录到
+  # 每个线程目录。
+  #
+  # 另请注意，limit 和 max-files 设置是按线程强制执行的。
+  # 所以使用 8 个线程处理 1000mb 文件和 2000 个文件时的大小限制
+  # 为：8*1000*2000 ~ 16TiB。
+  #
+  # 在 Sguil 模式下，“dir”表示基目录。在这个基础目录中，
+  # pcap 是在 Sguil 期望的目录结构中创建的：
+  #
+  # $sguil-base-dir/YYYY-MM-DD/$filename。<timestamp>
+  #
+  # 默认情况下，所有数据包都会被记录，但以下情况除外：
+  # - 超出 stream.reassembly.depth 的 TCP 流
+  # - 密钥交换后的加密流
+  #
+  - pcap-log:
+      enabled: no
+      filename: log.%n.%t.pcap
+
+      # 文件大小限制。 可以以 kb、mb、gb 为单位指定。 只是一个数字
+      # 被解析为字节。
+      limit: 2mb
+
+      # 如果设置了值，则启用环形缓冲区模式。将保留最大数量为
+      #“max-files” 的文件，大小为 “limit”
+      max-files: 2000
+
+      # pcap 文件的压缩算法。可能的值：none、lz4。
+      # 启用压缩与 sguil 模式不兼容。另请注意
+      # 在 Windows 上，启用压缩将*增加*磁盘 I/O。
+      compression: none
+
+      # lz4 压缩的更多选项。可以设置压缩级别
+      # 设置为介于 0 和 16 之间的值，其中值越大，结果越高
+      # 压缩。
+      #lz4-checksum: no
+      #lz4-level: 0
+
+      mode: multi # normal, multi or sguil.
+
+      # 放置 pcap 文件的目录。如果未提供默认日志
+      # 目录将被使用。对于“sguil”模式是必需的。
+      #dir: /nsm_data/
+
+      #ts-format: usec # sec 或 usec 第二种格式（默认）是 filename.sec usec 是 filename.sec.usec
+      use-stream-depth: no # 设置为“是”，则在达到流检查深度后看到的数据包将被忽略。“no”记录所有数据包
+      honor-pass-rules: no # 如果设置为 “yes”，则匹配的传递规则的流将停止被记录。
+      # 使用“all”记录所有数据包，或使用“alerts”仅记录告警的数据包和流，或使用“tag”
+      # 仅记录通过 “tag” 关键字标记的流
+      conditional: tag
+
+  # 一个完整的警报日志，其中包含签名编写者的大量信息
+  # 或用于调查疑似误报。
+  - alert-debug:
+      enabled: no
+      filename: alert-debug.log
+      append: yes
+      #filetype: regular # 'regular', 'unix_stream' or 'unix_dgram'
+
+  # Stats.log包含来自 Suricata 引擎的各种计数器的数据。
+  - stats:
+      enabled: no
+      filename: stats.log
+      append: yes       # 追加到文件（是）或覆盖文件（否）
+      totals: yes       # 合并在一起的所有线程的统计信息
+      threads: no       # 每个线程的统计信息
+      #null-values: yes  # 打印值为 0 的计数器。默认值：否
+
+  # 基于行的警报日志，类似于 fast.log 到 syslog 中
+  - syslog:
+      enabled: no
+      # 向 syslog 报告身份。如果省略程序名称（
+      # 通常 suricata） 将被使用。
+      #identity: "prism"
+      facility: local5
+      #level: Info ## 可能的 levels: Emergency, Alert, Critical,
+                   ## Error, Warning, Notice, Info, Debug
+
+  # 用于在磁盘上存储文件的输出模块。文件存储在
+  # 目录名称由 的前 2 个字符组成
+  # 文件的SHA256。每个文件都被赋予其 SHA256 作为文件名。
+  #
+  # 当找到重复文件时，时间戳会显示在现有文件上
+  # 已更新。
+  #
+  # 与旧的文件存储不同，默认情况下不会写入元数据
+  # 因为每个文件都应该已经有一个 “fileinfo” 记录
+  # eve-log。如果 write-fileinfo 设置为 yes，则每个文件都将具有
+  # 另一个由 fileinfo 组成的关联.json文件
+  # 记录。每次出现 fileinfo 文件时，都会写入一个 fileinfo 文件
+  # 使用文件名后缀查看的文件以确保唯一性。
+  #
+  # 要修剪 filestore 目录，请参阅 “suricatactl filestore
+  # prune“命令，可以删除超过一定期限的文件。
+  - file-store:
+      version: 2
+      enabled: yes
+
+      # 设置文件存储的目录。相对路径名
+      # 包含在 “default-log-dir” 中。
+      dir: filestore
+
+      # 为每次出现的文件写出一个 fileinfo 记录。
+      # 默认情况下禁用，因为每个事件都已被记录
+      # 作为 fileinfo 记录到主 eve-log。
+      write-fileinfo: yes
+
+      # 强制存储所有文件。默认值：否。
+      force-filestore: yes
+
+      # 覆盖我们想要的会话的全局流深度
+      # 执行文件解压。设置为 0 表示无限制;否则
+      # 必须大于要使用的全局流深度值。
+      stream-depth: 22mb
+
+      # 取消对以下变量的注释，以定义可以有多少个文件
+      # 保持对 Suricata 的文件存储开放。默认值为 0，即 0
+      # 表示每次写入文件后文件都会关闭。
+      max-open-files: 2048
+
+      # 强制记录校验和：可用的哈希函数有 md5、
+      # SHA1 和 SHA256。请注意，SHA256 是由
+      # 此输出模块的使用，因为它使用 SHA256 作为
+      # 文件命名方案。
+      #force-hash: [sha1, md5]
+      force-hash: [md5]
+      # 注意：如果禁用了 write-fileinfo，则忽略 X-Forwarded 配置
+      # HTTP X-Forwarded-For 支持，通过添加额外字段或覆盖
+      # 源或目标 IP 地址（取决于流向）
+      # 替换为 X-Forwarded-For HTTP 标头中报告的那个。这是
+      # 在查看正在倒车的流量警报时很有帮助
+      # 或转发代理。
+      xff:
+        enabled: no
+        # 有两种操作模式可供选择，extra-data和overwrite。
+        mode: extra-data
+        # 支持两种代理部署 reverse 和 forward 。在
+        # "reverse"部署，使用的 IP 地址是最后一个，在一个
+        # "forward"部署，使用第一个 IP 地址。
+        deployment: reverse
+        # 将报告实际 IP 地址的标头名称。如果更多
+        # 存在一个以上的 IP 地址，最后一个 IP 地址将是
+        # 一个被考虑在内。
+        header: X-Forwarded-For
+
+  # 流归一化后的日志TCP数据
+  # 两种类型: file 或 dir：
+  # - file 将日志文件入到单个日志文件中。
+  # - dir 为每个 TCP 会话创建 2 个文件并存储原始 TCP
+  # 数据放入其中。
+  # 使用 'both' 启用文件和目录模式。
+  #
+  # 注意：受 “stream.reassembly.depth” 限制
+  - tcp-data:
+      enabled: no
+      type: file
+      filename: tcp-data.log
+
+  # 经过规范化、去分块和解压缩后，记录 HTTP 正文数据。
+  # 两种类型：文件或目录。
+  # - file 将日志文件到单个日志文件中。
+  # - dir 为每个 HTTP 会话创建 2 个文件，并存储
+  # 将数据归一化到其中。
+  # 使用 'both' 启用文件和目录模式。
+  #
+  # 注意：受本体限制设置限制
+  - http-body-data:
+      enabled: no
+      type: file
+      filename: http-data.log
+
+  # Lua 输出支持 - 执行 lua 脚本生成警报和事件
+  # 输出。
+  # 记录在：
+  # https://docs.suricata.io/en/latest/output/lua-output.html
+  - lua:
+      enabled: no
+      #scripts-dir: /etc/prism/lua-output/
+      scripts:
+      #   - script1.lua
+
+# 日志配置。 这与记录 IDS 警报/事件无关，而是
+# 输出关于 Suricata 正在做什么，如启动消息、错误等。
+logging:
+  # 默认日志级别：可以在输出部分覆盖。
+  # 请注意，只有当 Suricata 为
+  # 使用 --enable-debug configure 选项编译。
+  #
+  # 此值被 SC_LOG_LEVEL 环境 var 覆盖。
+  default-log-level: notice
+
+  # 默认输出格式。 可选参数，应默认为
+  # 如果没有提供，则合理。 可以在
+  # 输出部分。 您可以省略此项以获取默认值。
+  #
+  # 此控制台日志格式值可以被 SC_LOG_FORMAT 环境 var 覆盖。
+  #default-log-format: "%D: %S: %M"
+  #
+  # 对于 7.0 之前的日志格式，请使用：
+  #default-log-format: "[%i] %t [%S] - (%f:%l) <%d> (%n) -- "
+
+  # 用于过滤输出的正则表达式。 可以在输出部分中被覆盖。
+  # 默认为空（无过滤器）。
+  #
+  # 此值被 SC_LOG_OP_FILTER 环境变量覆盖。
+  default-output-filter:
+
+  # 要求在配置和构建 Suricata 时 libunwind 可用。
+  # 如果信号意外终止 Suricata，则显示简短的诊断
+  # 带有违规 stacktrace 的消息（如果已启用）。
+  stacktrace-on-signal: on
+
+  # 定义你的日志输出。 如果未定义任何内容，或者全部定义
+  # 禁用，您将获得默认的： 控制台输出。
+  outputs:
+  - console:
+      enabled: yes
+      # type: json
+  - file:
+      enabled: yes
+      level: error
+      filename: prism.log
+      # format: "[%i - %m] %z %d: %S: %M"
+      # type: json
+  - syslog:
+      enabled: no
+      facility: local5
+      format: "[%i] <%d> -- "
+      # type: json
+
+
+##
+## 第 3 步：配置常用捕获设置
+##
+## 请参阅下面的“高级捕获选项”以获取更多选项，包括 Netmap
+## 和 PF_RING。
+##
+
+# Linux 高速捕获支持
+af-packet:
+  - interface: eth0
+    # 接收线程数。“auto”使用核心数
+    #threads: auto
+    # 默认 clusterid AF_PACKET 将根据流量对数据包进行负载均衡。
+    cluster-id: 99
+    # 默认AF_PACKET集群类型。AF_PACKET可以对每个流或每个哈希进行负载均衡。
+    # 仅 Linux 内核 > 3.1 支持此功能
+    # 可能的值为：
+    # * cluster_flow 给定流的所有数据包都发送到同一个套接字
+    # * cluster_cpu CPU在内核中处理的所有数据包都被发送到同一个套接字
+    # * cluster_qm 所有通过网卡链接到RSS队列的数据包都发送到同一队列
+    # 套接字。至少需要 Linux 3.14。
+    # * cluster_ebpf：eBPF 文件负载均衡。请参阅 doc/userguide/capture-hardware/ebpf-xdp.rst 了解
+    # 更多信息。
+    # 推荐的模式在大多数盒子上cluster_flow，在系统上cluster_cpu或cluster_qm
+    # 使用 RSS 的采集卡（需要 cpu 亲和性调优和系统 IRQ 调优）
+    # cluster_rollover已被弃用;如果使用，它将被替换为 cluster_flow
+    cluster-type: cluster_flow
+    # 在某些碎片情况下，无法计算哈希值。如果设置了“碎片整理”
+    # 设置为“是”，内核将在发送数据包之前执行所需的碎片整理。
+    defrag: yes
+    # 要使用 AF_PACKET 的环形功能，请将“use-mmap”设置为 yes
+    #use-mmap: yes
+    # 锁定内存映射以避免被交换。要小心，那结束
+    # 订阅可能会锁定您的系统
+    #mmap-locked: yes
+    # 使用tpacket_v3捕获模式，仅在 use-mmap 为 true 时激活
+    # 不要在 IPS 或 TAP 模式下使用它，因为它会导致严重的延迟
+    #tpacket-v3: yes
+    # 环的大小将根据 “max-pending-packets” 和 number 来计算
+    # 线程数。您可以通过设置来手动设置数据包数的环大小
+    # 以下值。如果您正在使用“集群类型”流并且真正具有网络
+    # 密集的单流，您可能希望设置与数字无关的“环大小”
+    # 线程数：
+    #ring-size: 2048
+    # 块大小仅供tpacket_v3使用。它应设置为足够高的值以包含
+    # 相当数量的数据包。大小以字节为单位，因此请考虑您的 MTU。它应该是
+    # 2 的幂，它必须是页面大小的倍数（通常为 4096）。
+    #block-size: 32768
+    # tpacket_v3块超时：如果未完成，则将打开的块传递给用户空间
+    # 在块超时毫秒后填充。
+    #block-timeout: 10
+    # 在繁忙的系统上，将其设置为 yes 以帮助从数据包丢弃中恢复
+    # 阶段。这将导致某些数据包（最多是环形刷新）未被检查。
+    #use-emergency-flush: yes
+    # recv 缓冲区大小，增加的值可以提高性能
+    # buffer-size: 32768
+    # 设置为yes禁用混杂模式
+    # disable-promisc: no
+    #为接口选择校验和验证模式。目前
+    #的捕获，一些数据包可能有一个无效的校验和由于
+    #校验和计算被卸载到网卡。
+    #可能的值有:
+    # - kernel:使用内核对每个数据包发送的指示(默认)
+    # - yes:强制校验和验证
+    # - no:禁用校验和验证
+    # - auto: Suricata使用统计方法来检测何时使用 checksum off-loading。
+    # 'Checksum-validation必须设置为yes才能进行任何验证
+    # 警告：必须将 'capture.checksum-validation' 设置为 yes 才能进行任何验证
+    #checksum-checks: kernel
+    # BPF过滤器应用于该接口。pcap过滤器语法在这里适用。
+    #bpf-filter: port 80 or udp
+    #您可以使用以下变量激活AF_PACKET tap或IPS模式。
+    #如果copy-mode设置为ips或tap，则当前流量
+    # interface将被复制到copy-iface接口。如果设置了'tap'，则
+    # copy已完成。如果设置了“ip”，则匹配“drop”动作的数据包
+    #将不会被复制。
+    #copy-mode: ips
+    #copy-iface: eth1
+    # eBPF和XDP设置包括旁路，过滤器和负载平衡，请
+    #见doc/userguide/capture-hardware/ebpf-xdp。RST获取更多信息。
+
+  #把默认值放在这里。这些将被用于接口，而不是
+  #上面列表中的
+  - interface: default
+    #threads: auto
+    #use-mmap: no
+    #tpacket-v3: yes
+
+# Linux高速af-xdp捕获支持
+af-xdp:
+  - interface: default
+    #接收线程数。“auto”使用的线程数最少
+    #的内核和RX队列
+    #threads: auto
+    #disable-promisc: false
+    #当驱动程序支持XDP时可以选择 XDP_DRV模式
+    #当驱动程序不支持XDP时，可以选择 XDP_SKB模式
+    #可能的值有:
+    # - drv:启用XDP_DRV模式
+    # - skb:启用XDP_SKB模式
+    # - none:禁用(内核负责应用模式)
+    #force-xdp-mode: none
+    #在套接字绑定期间，内核将尝试零拷贝，如果这
+    #如果失败，它将回退到copy。如果此操作失败，则绑定失败。
+    #可以使用下面的选项显式配置bind。
+    #如果配置，绑定如果不成功将失败(无回退)。
+    #可能的值有:
+    # - zero:启用零拷贝模式
+    # - copy:启用拷贝模式
+    # - none:禁用(内核负责应用模式)
+    #force-bind-mode: none
+    #内存对齐模式可以在两种模式之间变化，aligned和
+    #未对齐的块模式。默认情况下，选择对齐块模式。
+    #选择'yes'以启用未对齐的块模式。
+    #注意:未对齐的块模式使用巨大的页面，所以所需的数量
+    #的页面必须是可用的。
+    #mem-unaligned: no
+    #下面的选项配置了prefer-busy-polling套接字
+    #选项。投票时间和预算可以在这里编辑。
+    #可能的值有:
+    # - yes:启用(默认)
+    # - no:禁用
+    #enable-busy-poll: yes
+    # busy-poll-time将以微秒为单位的近似时间设置为busy
+    # poll阻塞接收时没有数据。
+    #busy-poll-time: 20
+    # busy-poll-budget是批包允许的预算
+    #busy-poll-budget: 64
+    #这两个可调项用于配置Linux操作系统的NAPI
+    #上下文。它们的目的是延迟启用中断和
+    #代替从看门狗定时器调度NAPI上下文。
+    #软NAPI将提前退出，允许繁忙的轮询
+    #执行。成功设置这些可调参数和繁忙轮询
+    #应该可以提高性能。
+    #默认值为:
+    #gro-flush-timeout: 2000000
+    #napi-defer-hard-irq: 2
+
+dpdk:
+  eal-params:
+    proc-type: primary
+
+  # DPDK捕获支持
+  # RX队列(和IPS模式下的TX队列)按1:1的比例分配给核
+  interfaces:
+    - interface: 0000:05:00.0 # NIC端口的PCIe地址 （PrismInput0 这个注释用于唯一标识这一行的端口信息，以便脚本替换，至少要包含 ”PrismInput0“ 字符串）
+      # Threading:可能的值是“auto”或线程数
+      # - auto取所有内核
+      #在IPS模式下需要指定核数，且两个接口的核数必须匹配
+      threads: 4
+      #interrupt-mode: true # true切换到中断模式
+      promisc: true #混杂模式-捕获所有数据包
+      multicast: false #也启用对组播数据包的检测
+      checksum-checks: true #如果Suricata应该验证校验和
+      checksum-checks-offload: true #如果可能，卸载校验和验证到NIC(节省Suricata资源)
+      mtu: 1500 #以字节为单位设置设备的mtu
+      rss-hash-functions: auto
+      # RSS -hash-functions: 0x0 #高级配置选项，仅当您使用未经测试的NIC卡并遇到RSS警告时使用。
+      #对于' RSS -hash-functions '使用十六进制0x01ab格式指定RSS哈希函数标志- DumpRssFlags可以帮助(如果你在Suri启动时使用-vvv选项，你可以看到输出)
+      # setting auto to rss_hf设置默认的RSS哈希函数(基于IP地址)
+
+      #近似计算接口内存池所需的空间量(以字节为单位):mempool-size * mtu
+      #确保你有足够的分配的大页面。
+      #包内存池的最佳大小(就内存使用而言)是2减1的幂:n = (2^q - 1)
+      mempool-size: 512000 # mbuf池中的元素个数，500000-67108863 # 2^26 - 1 = 67108863，约使用100GB内存，500000启动最快
+
+      # Mempool缓存大小必须小于或等于:
+      # - RTE_MEMPOOL_CACHE_MAX_SIZE(默认512)和
+      # -“mempool-size / 1.5”
+      #建议选择cache_size有“mempool-size modulo cache_size == 0”。
+      #如果不是这样，一些元素将永远留在池中，永远不会被使用。
+      #如果cache_size参数设置为0，可以禁用缓存，这有助于避免在缓存中丢失对象
+      #如果该值为空或设置为“auto”，Suricata将尝试设置内存池的缓存大小为一个值
+      #匹配前面提到的推荐值
+      mempool-cache-size: 512
+      rx-descriptors: 4096
+      tx-descriptors: 4096
+      #
+      # Suricata的IPS模式有三种工作模式:none, tap, IPS
+      # - none:仅支持IDS模式-关闭IPS功能(不转发报文)
+      # - tap:转发所有数据包并产生警报(省略DROP动作)这不是DPDK tap
+      # - ips:与tap模式相同，但它也会丢弃被规则标记为要丢弃的数据包
+      copy-mode: none
+      copy-iface: none #或第二个接口的PCIe地址
+
+    #- interface: 0000:00:08.0
+      #threads: 1
+      #promisc: true
+      #multicast: true
+      #checksum-checks: true
+      #checksum-checks-offload: true
+      #mtu: 1500
+      #rss-hash-functions: auto
+      #mempool-size: 65535
+      #mempool-cache-size: 256
+      #rx-descriptors: 1024
+      #tx-descriptors: 1024
+      #copy-mode: ips
+      #copy-iface: 0000:00:07.0
+
+
+# 跨平台libpcap捕获支持
+pcap:
+  - interface: eth0
+    #在Linux上，pcap将尝试使用mmap'ed capture，并将使用“buffer-size”
+    #作为环使用的总内存。所以将这个设置为更大的值
+    #不到你带宽的1%。
+    #buffer-size: 16777216
+    #bpf-filter: "tcp and port 25"
+    #为接口选择校验和验证模式。目前
+    #的捕获，一些数据包可能有一个无效的校验和由于
+    #校验和计算被卸载到网卡。
+    #可能的值有:
+    # - yes:强制校验和验证
+    # - no:禁用校验和验证
+    # - auto: Suricata使用统计方法来检测何时
+    #使用 checksum off-loading。(默认)
+    #警告:'capture. 'Checksum-validation必须设置为yes才能进行任何验证
+    #checksum-checks: auto
+    #使用一些使用修改过的libpcap的加速卡(如Myricom)，您
+    #可能希望捕获线程的数量与捕获次数相同
+    #戒指。在本例中，将threads变量设置为N以启动N个线程
+    #监听同一接口。
+    #threads: 16
+    # set为no禁用混杂模式:
+    #promisc: no
+    # set snapen，如果不设置，如果MTU已知，则默认为MTU
+    #通过ioctl调用，如果没有设置，则进行完全捕获。
+    #snaplen: 1518
+  #把默认值放在这里
+  - interface: default
+    #checksum-checks: auto
+
+#设置读取pcap文件
+pcap-file:
+  #可能的值有:
+  # - yes:强制校验和验证
+  # - no:禁用校验和验证
+  # - auto: Suricata使用统计方法来检测何时使用
+  # checksum offloading。(默认)
+  #警告:'checksum-validation'必须设置为yes以进行校验和测试
+  checksum-checks: no
+
+#查看下面的“高级捕获选项”了解更多选项，包括Netmap
+#和PF_RING。
+
+
+# #
+##步骤4:App Layer Protocol配置
+# #
+
+#配置应用层解析器。
+#
+#error-policy设置适用于所有应用层解析器。值可以是
+#“drop-flow”，“pass-flow”，“bypass”，“drop-packet”，“pass-packet”，“reject”或
+#“ignore”(默认设置)。
+#
+#协议的部分详细说明了每个协议。
+#
+#选项"enabled"有3个值:"yes"， "no"， "detection-only"。
+# "yes"启用检测和解析器，"no"禁用两者，和
+# "detect -only"只启用协议检测(禁用解析器)。
+app-layer:
+  # error-policy: ignore
+  protocols:
+    flow-log:
+      enabled: yes
+      all-log: yes
+      in-iface: enp5s0f0
+      tcp-server: 127.0.0.1
+      tcp-port: 6666
+    telnet:
+      enabled: no
+    rfb:
+      enabled: no
+      detection-ports:
+        dp: 5900, 5901, 5902, 5903, 5904, 5905, 5906, 5907, 5908, 5909
+    mqtt:
+      enabled: no
+      # max-msg-length: 1mb
+      # subscribe-topic-match-limit: 100
+      # unsubscribe-topic-match-limit: 100
+      # Maximum number of live MQTT transactions per flow
+      # max-tx: 4096
+    krb5:
+      enabled: yes
+      log: yes
+      detection-ports:
+        dp: 88
+    bittorrent-dht:
+      enabled: no
+    snmp:
+      enabled: no
+    ike:
+      enabled: no
+    tls:
+      enabled: no
+      detection-ports:
+        dp: 443
+
+      #从客户端hello生成JA3指纹。如果没有指定它默认情况下，
+      #将被禁用，但如果规则要求，它将被启用。
+      #ja3-fingerprints: auto
+      #ja4-fingerprints: auto
+
+      #加密通信启动后怎么办:
+      # - default: 保持跟踪TLS会话，检查协议异常，
+      # inspect tls_* keywords。禁用对未修改的检查
+      # 'content'签名。
+      # - bypass:  尽可能停止处理此流。没有进一步的TLS解析和检查。卸载流旁路到内核
+      #或硬件，
+      #如果可能的话。
+      # - full:    照常跟踪和检查。修改的内容
+      #关键字签名也被检查。
+      #
+      # 为了获得最佳性能，选择 'bypass'.
+      #
+      encryption-handling: bypass
+
+    pgsql:
+      enabled: yes
+      log: yes
+      result: no
+      detection-ports:
+        dp: 5432
+      # PostgreSQL的流重组大小。默认情况下，完全跟踪它。
+      #stream-depth: 0
+      # 每个流的最大PostgreSQL事务数
+      # max-tx: 1024
+    dcerpc:
+      enabled: no
+      # 每个流的最大实时DCERPC事务数
+      # max-tx: 1024
+    ftp:
+      enabled: yes
+      memcap: 64mb
+    rdp:
+      enabled: no
+    ssh:
+      enabled: no
+      hassh: yes
+    http2:
+      enabled: no
+      # 一个流中最大的HTTP2流数
+      max-streams: 4096
+      # 最大头表大小
+      max-table-size: 65536
+      # 报头+延续帧的最大重组大小
+      max-reassembly-size: 102400
+    smtp:
+      enabled: no
+      raw-extraction: no
+      # 每个流的最大SMTP事务数
+      # max-tx: 256
+      # 配置SMTP-MIME解码器
+      mime:
+        # 解码MIME消息从SMTP事务
+        # (可能是资源密集型的)
+        # 此字段取代所有其他字段，因为它将整个
+        # process on or off
+        decode-mime: yes
+
+        # 解码MIME实体体(即:Base64，引用-printable等)
+        decode-base64: yes
+        decode-quoted-printable: yes
+
+        # 每个头数据值存储在数据结构中的最大字节数
+        # (default is 2000)
+        header-value-depth: 2000
+
+        # 提取url并保存在状态数据结构中
+        extract-urls: yes
+        # url提取方案
+        #(默认为[http])
+        #extract-urls-schemes: [http, https, ftp, mailto]
+        #记录被提取的url方案
+        #(默认为no)
+        #log-url-scheme: yes
+        #设置为yes以计算邮件正文的md5。然后你将
+        #可以记录下来。
+        body-md5: no
+      #为file_data关键字配置 inspected-tracker
+      inspected-tracker:
+        content-limit: 100000
+        content-inspect-min-size: 32768
+        content-inspect-window: 4096
+    imap:
+      enabled: no
+    smb:
+      enabled: no
+      detection-ports:
+        dp: 139, 445
+      # 每个流的最大SMB事务数
+      max-tx: 1024
+
+      # SMB流重组大小。默认情况下完全跟踪它。
+      stream-depth: 2048000
+
+    nfs:
+      enabled: no
+      max-tx: 1024
+    tftp:
+      enabled: no
+    dns:
+      tcp:
+        enabled: no
+        detection-ports:
+          dp: 53
+      udp:
+        enabled: no
+        detection-ports:
+          dp: 53
+    http:
+      enabled: yes
+      request-header-limit: 2048000
+      response-header-limit: 4096000
+      request-body-limit: 100000
+      response-body-limit: 100000
+      all-log: yes
+      # Byte Range容器默认设置
+      byterange:
+         memcap: 64mb
+         timeout: 60
+
+      # memcap: HTTP的最大内存容量
+      #默认是无限的，值可以是64mb，例如:
+
+      # default-config:当没有服务器配置匹配时使用
+      # personality:默认使用的个性列表
+      # request-body- Limit:限制重新组装请求体以进行检查
+      # by http_client_body & pcre /P option。
+      # response-body- Limit:限制响应体的重新组装以供检查
+      # by file_data, http_server_body & pcre /Q选项。
+      #
+      #高级选项请参见用户指南
+
+
+      # server-config:如果地址匹配，要使用的服务器配置列表
+      # address:此块的IP地址或网络列表
+      # personality:该区块使用的人格列表
+      #
+      #然后，default-config中的所有字段都可以重载
+      #
+      #当前可用的角色:
+      # Minimal, Generic, IDS(默认)，IIS_4_0, IIS_5_0, IIS_5_1, IIS_6_0，
+      # IIS_7_0, IIS_7_5, Apache_2
+      libhtp:
+         default-config:
+           personality: IDS
+
+           #可以指定kb, mb, gb。仅用数字表示
+           #以字节为单位。
+           request-body-limit: 100kb
+           response-body-limit: 100kb
+
+           # inspection limits
+           request-body-minimal-inspect-size: 32kb
+           request-body-inspect-window: 4kb
+           response-body-minimal-inspect-size: 40kb
+           response-body-inspect-window: 16kb
+
+           # 响应体解压(0禁用)
+           response-body-decompress-layer-limit: 2
+
+           # auto将在IPS模式下使用http-body-inline模式，是或否设置为静态模式
+           http-body-inline: auto
+
+           # 解压缩SWF文件。默认禁用。
+           # 两种类型:'deflate'， 'lzma'， 'both'将解压deflate和lzma
+           # compress-depth:
+           # 指定要解压缩的最大数据量。
+           # set 0表示无限制。
+           # decompress-depth:
+           # 指定要获取的最大解压数据量，
+           # set 0表示无限制。
+           swf-decompression:
+             enabled: no
+             type: both
+             compress-depth: 100kb
+             decompress-depth: 100kb
+
+           # 使用一个随机值来检查指定值周围的大小。
+           # 这降低了一些逃避技巧的风险，但可能导致
+           # 检测到运行之间的变化。默认设置为“yes”。
+           #randomize-inspection-sizes: yes
+           # 如果“randomize-inspect -sizes”是激活的，则其值为各种
+           # 检查大小将从[1 - range%， 1 + range%]中选择
+           # 范围
+           # randomize-inspect-range的默认值是 10。
+           #randomize-inspection-range: 10
+
+           # 解码
+           double-decode-path: no
+           double-decode-query: no
+
+           # 可以开启LZMA解压
+           #lzma-enabled: false
+           # 限制LZMA解压缩字典的内存使用
+           # 数据被解压缩，直到字典达到这个大小
+           #lzma-memlimit: 1mb
+           # 最大解压大小与压缩比
+           # 2048以上(只有LZMA能达到这个比例，deflate不能)
+           #compression-bomb-limit: 1mb
+           # usec中解压单个事务所花费的最大时间
+           decompression-time-limit: 100000
+           # 每个流的最大实时事务数
+           #max-tx: 512
+
+         server-config:
+
+           #- apache:
+           #    address: [192.168.1.0/24, 127.0.0.0/8, "::1"]
+           #    personality: Apache_2
+           #    # 可以指定为 kb, mb, gb。仅用数字表示
+           #    # 以 bytes 字节为单位
+           #    request-body-limit: 4096
+           #    response-body-limit: 4096
+           #    double-decode-path: no
+           #    double-decode-query: no
+
+           #- iis7:
+           #    address:
+           #      - 192.168.0.0/24
+           #      - 192.168.10.0/24
+           #    personality: IIS_7_0
+           #    # 可以指定kb、mb、gb。仅用数字表示
+           #    # 以 bytes 字节为单位
+           #    request-body-limit: 4096
+           #    response-body-limit: 4096
+           #    double-decode-path: no
+           #    double-decode-query: no
+
+    # 注意:Modbus探测解析器是极简的，因为在该领域的使用有限。
+    # 仅Modbus消息长度(大于Modbus报头长度)
+    # 在探测解析器中检查#和协议ID(等于0)
+    # 启用检测端口和定义Modbus端口很重要
+    # 以避免误报
+    modbus:
+      # 有多少未应答的Modbus请求被认为是洪水。
+      # 如果达到限制，app-layer-event:modbus. flooding;将匹配。
+      #request-flood: 500
+
+      enabled: no
+      detection-ports:
+        dp: 502
+      # 根据TCP/IP实现指南V1.0b的MODBUS消息传递，它
+      # 建议使用#保持与远端设备的TCP连接打开
+      # 和不为每个MODBUS/TCP事务打开和关闭它。在那
+      # 情况下，重要的是将流重组的深度设置为
+      # unlimited (stream.reassembly.depth: 0)
+
+      # Stream reassembly size for modbus。默认情况下完全跟踪。
+      stream-depth: 0
+
+    # DNP3
+    dnp3:
+      enabled: no
+      detection-ports:
+        dp: 20000
+
+    mysql:
+      enabled: yes
+      log: yes
+      result: no
+      detection-ports:
+        dp: 3306	
+    mariadb:
+      enabled: yes
+      log: yes
+      result: no
+      detection-ports:
+        dp: 3306		
+    db2:
+      enabled: yes
+      log: yes
+      detection-ports:
+        dp: 50000,60000
+    dmdb:
+      enabled: yes
+      log: yes
+      result: no
+      detection-ports:
+        dp: 5236
+    tidb:
+      enabled: yes
+      log: yes
+      result: no
+      detection-ports:
+        dp: 4000
+    hana:
+      enabled: yes
+      log: yes
+      #detection-ports:
+        #dp: 30013:39998
+    kingbase:
+      enabled: yes
+      log: yes
+      result: no
+      detection-ports:
+        dp: 54321
+    cassandra:
+      enabled: yes
+      log: yes
+      result: no
+      detection-ports:
+        dp: 9042
+    radius:
+      enabled: yes
+      log: yes
+      detection-ports:
+        dp: 1812,1813
+    redis:
+      enabled: yes
+      log: yes
+      result: no
+      detection-ports:
+        dp: 6379
+    mongodb:
+      enabled: yes
+      log: yes
+      detection-ports:
+        dp: 27017
+    ldap:
+      enabled: yes
+      log: yes
+      detection-ports:
+        dp: 389
+    gitsmart:
+      enabled: yes
+      log: yes
+      #detection-ports:
+        #dp: 9418
+    sqlserver:
+      enabled: yes
+      log: yes
+      result: no
+      detection-ports:
+        dp: 1433
+    oracle:
+      enabled: yes
+      log: yes
+      #detection-ports:
+        #dp: 1521
+
+    # SCADA EtherNet/IP and CIP 协议支持
+    enip:
+      enabled: no
+      detection-ports:
+        dp: 44818
+        sp: 44818
+
+    ntp:
+      enabled: no
+
+    quic:
+      enabled: no
+
+    dhcp:
+      enabled: no
+
+    sip:
+      enabled: no
+
+# 限制asn1帧的最大解码数(默认256)
+asn1-max-frames: 256
+
+# datassets默认设置
+datasets:
+  # 在这些情况下，数据集的默认回退memcap和hashsize值
+  # 没有明确定义。
+  defaults:
+    #memcap: 100mb
+    #hashsize: 2048
+
+  rules:
+    #设置为true允许绝对文件名和文件名使用
+    # ".."组件在规则中引用父目录，指定
+    # their文件名。
+    #allow-absolute-filenames: false
+
+    # 允许规则中的数据集对“save”和“write access”进行写访问
+    # “状态”。这是默认启用的，但是写访问是启用的
+    # 限制于数据目录。
+    #allow-write: true
+
+##############################################################################
+##
+## 下面是高级设置
+##
+##############################################################################
+
+##
+## 运行选项
+##
+
+# 使用特定的用户id和组id运行Suricata:
+#run-as:
+#  user: suri
+#  group: suri
+
+security:
+  #如果为true，则通过调用Suricata来阻止进程创建
+  # setrlimit(RLIMIT_NPROC, 0)
+  limit-noproc: false
+  # 在Linux下使用landlock安全模块
+  landlock:
+    enabled: no
+    directories:
+      #write:
+      #  - /var/run/
+      # /usr和/etc文件夹被添加到read list以允许
+      # file magic被使用。
+      read:
+        - /usr/
+        - /etc/
+        - /etc/prism/
+
+  lua:
+    # 允许Lua规则。默认禁用。
+    #allow-rules: false
+
+# 一些日志模块将在事件中使用该名称作为标识符。默认的
+# 值是主机名
+#sensor-name: prism
+
+# pid文件的默认位置。pid文件只在
+# daemon模式(使用-D启动Suricata)。如果不在守护模式下运行
+# 必须使用——pidfile命令行选项来创建pid文件。
+pid-file: /var/run/prism.pid
+
+# Daemon工作目录
+# Suricata会将目录更改为此目录
+# 默认值:"/"
+#daemon-directory: "/"
+
+# Umask。
+# 如果提供了这个掩码，Suricata将使用它。默认情况下，它将使用
+# umask由shell传递。
+#umask: 022
+
+# Suricata核心转储配置。将核心转储文件的大小限制为
+# 大约max-dump。实际的核心转储大小将是
+# page大小。大于max-dump的核心转储将被截断。在
+# Linux上，实际的核心转储大小可能比max-dump大几页。
+# 将max-dump设置为0将禁用核心转储。
+# 将max-dump设置为“unlimited”将提供完整的核心转储文件。
+# 在32位Linux上，max-dump值>= ULONG_MAX可能会导致核心转储文件的大小
+# 为“无限制”。
+
+coredump:
+  max-dump: unlimited
+
+# 如果Suricata盒子是嗅探网络的路由器，将其设置为“router”。如果
+# 它是一个纯嗅探设置，将其设置为'sniffer-only'。
+# 如果设置为auto，则变量在IPS模式下内部切换为“router”
+# 和'sniffer-only'在IDS模式下。
+# 此功能目前仅由reject*关键字使用。
+host-mode: auto
+
+# 每个线程预分配的数据包数。默认为1024。更高的数字
+# 将确保每个CPU更容易保持忙碌，但可能会产生负面影响
+# 影响缓存。
+max-pending-packets: 1024
+
+# 引擎应使用的运行模式。请检查 --list-runmodes 以获取可用的
+# 每种数据包获取方法的运行模式。默认值取决于选定的捕获
+# 方法. 'workers' 通常表现最好。
+runmode: workers
+#runmode: autofp
+#runmode: single
+
+# 指定流固定autofp模式使用的流负载均衡器类型。
+#
+# 支持的调度器有:
+#
+# hash     - 使用5-7元组哈希值分配给线程的流量。
+# ippair   - 仅使用地址分配给线程的流量。
+# ftp-hash - 使用哈希值分配给线程的流量，FTP除外，因此
+#            ftp-data flows 流将由同一线程处理
+#
+#autofp-scheduler: hash
+
+# 为每个包预先分配大小。默认为1514，这是经典的
+# 以太网上pcap的# size。你应该把这个值调到最大值
+# 包大小(MTU +硬件头)在您的系统上。
+default-packet-size: 1514
+
+# Unix命令套接字，可用于向Suricata传递命令。
+# 然后外部工具可以连接到Suricata获取信息
+# 或者触发引擎的一些修改。设置enabled为yes
+# 来激活该功能。在自动模式下，该功能只会
+# 在实时捕捉模式下激活。可以用filename变量来设置
+# 套接字的文件名。
+unix-command:
+  enabled: yes
+  filename: /var/run/prism/custom.socket
+
+# Magic文件。扩展名.mgc被添加到这里的值中。
+#magic-file: /usr/share/file/magic
+#magic-file:
+
+# GeoIP2数据库文件。指定GeoIP2数据库的路径和文件名
+# 如果使用“geoip”规则选项的规则。
+#geoip-database: /usr/local/share/GeoLite2/GeoLite2-Country.mmdb
+
+legacy:
+  uricontent: enabled
+
+##
+## 检测设置
+##
+
+# 设置基于动作的警报顺序
+# 默认顺序是pass, drop, reject, alert
+# action-order:
+#   - pass
+#   - drop
+#   - reject
+#   - alert
+
+# 定义同一事件可能触发的最大警报数量
+# 包。默认为15
+packet-alert-max: 15
+
+# 例外策略
+#
+# 为所有异常策略定义一个共同的行为。
+# IPS模式下，默认为drop-flow。如果不可能，则
+# engine将降为drop-packet。要退回到旧的行为(设置每个
+# them单独设置，或者忽略全部)，将此设置为忽略。
+# 所有可用于异常策略的值都可以使用，并且有一个
+# extra选项:auto -这意味着drop-flow或drop-packet(如上所述)IPS模式为
+# IDS模式为忽略。例外策略值为:drop-packet，
+# drop-flow, reject, bypass, pass-packet, pass-flow, ignore (disable)。
+exception-policy: auto
+
+# IP声誉
+#reputation-categories-file: /etc/prism/iprep/categories.txt
+#default-reputation-path: /etc/prism/iprep
+#reputation-files:
+# - reputation.list
+
+# 当使用选项--engine-analysis运行时，引擎将读取每一个
+# 下面的参数，并打印每个启用部分的报告
+# 并退出。报告被打印到默认日志目录下的一个文件中
+# 由参数“default-log-dir”给出，带有引擎报告下面的
+# 分段在自己的报告文件中打印报告。
+engine-analysis:
+  # 为每个规则的快速模式打印报告。
+  rules-fast-pattern: no
+  # 为每条规则打印报告
+  rules: no
+
+# 支持PCRE的递归和匹配限制
+pcre:
+  match-limit: 3500
+  match-limit-recursion: 1500
+
+##
+## 高级流量跟踪和重建设置
+##
+
+# 主机针对碎片整理和TCP流的特定策略
+# 重新组装。主机操作系统查找是使用基数树完成的，只是
+# 像一个路由表，所以最具体的条目匹配。
+host-os-policy:
+  # 创建默认策略窗口。
+  windows: [0.0.0.0/0]
+  bsd: []
+  bsd-right: []
+  old-linux: []
+  linux: []
+  old-solaris: []
+  solaris: []
+  hpux10: []
+  hpux11: []
+  irix: []
+  macos: []
+  vista: []
+  windows2k3: []
+
+# 整理设置:
+
+# memcap-policy值可以是“drop-packet”，“pass-packet”，“reject”或
+#“ignore”(默认值)。
+defrag:
+  memcap: 32mb
+  # memcap-policy: ignore
+  hash-size: 65536
+  trackers: 65535 # 要跟踪的碎片化流数量
+  max-frags: 65535 # 分片数(高于跟踪器)
+  prealloc: yes
+  timeout: 60
+
+# 启用每个主机设置的磁盘碎片整理
+#  host-config:
+#
+#    - dmz:
+#        timeout: 30
+#        address: [192.168.1.0/24, 127.0.0.0/8, 1.1.1.0/24, 2.2.2.0/24, "1.1.1.1", "2.2.2.2", "::1"]
+#
+#    - lan:
+#        timeout: 45
+#        address:
+#          - 192.168.0.0/24
+#          - 192.168.10.0/24
+#          - 172.16.14.0/24
+
+# 流量设置:
+# 默认情况下，流的预留内存(memcap)为32MB。这是极限
+# 用于引擎内部的流量分配。您可以将此值更改为允许
+# 流使用更多内存。
+# hash-size决定了用于识别内部流的哈希大小
+# 引擎，默认值是65536。
+# 在启动时，引擎可以预先分配一些流量，以变得更好
+# 性能。预分配的流数默认为10000。
+# emergency-recovery是引擎需要恢复的流量百分比
+# 清除紧急状态前进行修剪。紧急状态被激活
+# 当达到memcap限制时，允许创建新的流，但是
+# 使用紧急超时(它们在下面定义)修剪它们。
+# 如果达到memcap，引擎将尝试修剪流
+# 默认超时。如果找不到可以修剪的流，就会设置
+# 紧急位，它将再次尝试更激进的超时。
+# 如果这不起作用，那么它将尝试杀死使用
+# 最后一次看到的流。
+# memcap可以指定为kb, mb, gb。只需要一个数字就可以了
+# 以字节为单位。
+# memcap-policy可以是“drop-packet”，“pass-packet”，“reject”或“ignore”
+# (默认设置)。
+
+flow:
+  memcap: 512mb
+  #memcap-policy: ignore
+  hash-size: 262140
+  prealloc: 40000
+  emergency-recovery: 30
+  managers: 4 # 默认为一个流管理器
+  recyclers: 4 # 默认为一个流回收器线程
+  prune-flows: 500 # 在紧急模式下被终止的流量
+
+# 此选项控制流(和碎片整理)中VLAN id的使用
+# 散列。正常情况下，这应该是启用的，但在某些(破碎)
+# 设置流的两端不使用相同的VLAN标记
+# tag，我们可以忽略流散列中的VLAN id。
+vlan:
+  use-for-tracking: true
+
+#该选项控制流中livedev id的使用(和碎片整理)
+#散列。这是默认启用的，如果
+#多个活动设备用于捕获来自同一网络的流量
+livedev:
+  use-for-tracking: true
+
+#流的特定超时。在这里你可以指定的超时
+# active流将等待从当前状态转换到另一个状态
+#协议。“new”的值决定握手或握手后等待的秒数
+# stream启动在引擎释放流的数据之前，它没有
+#将状态更改为established(通常如果我们没有收到更多的数据包)
+#的流)。“建立”的价值就是
+#秒，如果时间过了，引擎将等待释放流
+#不接收新数据包或关闭连接。“closed”是
+#流关闭后等待的时间(通常为零)。“绕过”
+# timeout控制局部绕过的流。对于这些流，我们不做任何其他操作
+#跟踪。如果在此超时后没有看到任何数据包，则丢弃该流。
+#
+#有一个紧急模式，在受到攻击的情况下会激活，
+#使引擎能够更快地检查流量状态。这个配置变量
+#使用前缀“emergency-”，工作方式与普通配置类似。
+#有些超时并不适用于所有协议，比如“closed”，对于udp和
+# icmp。
+
+flow-timeouts:
+
+  default:
+    new: 30
+    established: 300
+    closed: 0
+    bypassed: 100
+    emergency-new: 10
+    emergency-established: 100
+    emergency-closed: 0
+    emergency-bypassed: 50
+  tcp:
+    new: 60
+    established: 600
+    closed: 60
+    bypassed: 100
+    emergency-new: 5
+    emergency-established: 100
+    emergency-closed: 10
+    emergency-bypassed: 50
+  udp:
+    new: 30
+    established: 300
+    bypassed: 100
+    emergency-new: 10
+    emergency-established: 100
+    emergency-bypassed: 50
+  icmp:
+    new: 30
+    established: 300
+    bypassed: 100
+    emergency-new: 10
+    emergency-established: 100
+    emergency-bypassed: 50
+
+# 流引擎设置。这里是TCP流跟踪和重组
+# 引擎已配置。
+#
+# stream:
+#   memcap: 64mb                # 可以指定kb、mb、gb。只是一个
+#                               # 数字表示它的单位是字节。
+#   memcap-policy: ignore       # 可以是 "drop-flow", "pass-flow", "bypass",
+#                               # "drop-packet", "pass-packet", "reject" or
+#                               # "ignore" 默认为 "ignore"
+#   checksum-validation: yes    # 验证接收到的校验和
+#                               # packet。如果将csum验证指定为
+#                               # "yes"，那么具有无效csum值的数据包将不会被验证
+#                               # 由引擎流/应用层处理
+#                               # 警告:本地生成的流量可以
+#                               # 由于硬件卸载，在没有校验和的情况下生成
+#                               # 校验和的。你可以控制校验和的处理
+#                               # 在每个接口的基础上通过'checksum-checks'
+#                               # 选项
+#   prealloc-sessions: 2048     # 每个流线程预分配2k个会话
+#   midstream: false            # 不允许中流会话拾取
+#   midstream-policy: ignore    # 可以是 "drop-flow", "pass-flow", "bypass",
+#                               # "drop-packet", "pass-packet", "reject" or
+#                               # "ignore" default is "ignore"
+#   async-oneside: false        # 不启用异步流处理
+#   inline: no                  # stream inline模式
+#   drop-invalid: yes           # 在内联模式下，丢弃与流引擎相关的无效数据包
+#   max-syn-queued: 10          # 最大不同的syn队列
+#   max-synack-queued: 5        # 最大不同的SYN/ ack排队
+#   bypass: no                  # 当stream.reassembly.depth达到时绕过数据包
+#                               # 警告:第一个到达此触发器的端
+#                               # 旁路。
+#   liberal-timestamps: false   # 处理所有时间戳，就像Linux策略适用一样。这
+#                               # 的意思是稍微宽松一点。默认启用。
+#
+#   reassembly:
+#     memcap: 256mb             # 可以指定kb、mb、gb。只是一个数字而已
+#                               # 表示以字节为单位.
+#     memcap-policy: ignore     # 可以是 "drop-flow", "pass-flow", "bypass",
+#                               # "drop-packet", "pass-packet", "reject" or
+#                               # "ignore" default is "ignore"
+#     depth: 1mb                # 可以指定为kb、mb、gb。只是一个数字而已
+#                               # 表示以字节为单位
+#     toserver-chunk-size: 2560 # 检查原始流的块至少为
+#                               # 这个大小。可以指定为kb, mb，
+#                               # gb。只是一个数字表示它的单位是字节。
+#     toclient-chunk-size: 2560 # 检查原始流的块至少为
+#                               # this size.  可以指定为 kb, mb,
+#                               # gb.  只是一个数字表示它的单位是字节
+#     randomize-chunk-size: yes # 取指定值周围的随机值作为块大小。
+#                               # 这降低了一些逃避技术的风险，但可能导致
+#                               # 导致运行之间的检测变化。默认设置为“yes”。
+#     randomize-chunk-range: 10 # 如果randomize-chunk-size是激活的，则chunk-size的值为
+#                               # 介于(1 - randomize-chunk-range/100)*toserver-chunk-size之间的随机值
+#                               # 和(1 + randomize-chunk-range/100)*toserver-chunk-size之间的随机值
+#                               # 计算toclient-chunk-size
+#                               # randomize-chunk-range的默认值是10。
+#
+#     raw: yes                  # ' raw '重组启用或禁用。
+#                               #  raw用于检测内容检查
+#                               # 引擎.
+#
+#     segment-prealloc: 2048    # 每个线程预分配的段数
+#
+#     check-overlap-different-data: true|false
+#                               # 检查一个段是否包含不同的数据
+#                               # 与我们已经看到的数据不同
+#                               # 流中的
+#                               # 在内联模式下自动启用
+#                               # 使用或者stream-event:reassembly_overlap_different_data;
+#                               # 在规则中使用。
+#
+stream:
+  memcap: 64mb
+  #memcap-policy: ignore
+  prealloc-sessions: 32768
+  checksum-validation: yes      # 拒绝不正确的校验和
+  midstream: false
+  #midstream-policy: ignore
+  async-oneside: true         # 不启用异步流处理
+  drop-invalid: yes           # 丢弃无效数据包
+  bypass: no
+  inline: auto                  # auto将在IPS模式下使用inline模式，是或否将其静态设置
+  reassembly:
+    memcap: 256mb
+    #memcap-policy: ignore
+    depth: 1mb                  # 将 1MB 重新组装到流中
+    toserver-chunk-size: 2560
+    toclient-chunk-size: 2560
+    randomize-chunk-size: yes
+    randomize-chunk-range: 10
+    raw: yes
+    segment-prealloc: 2048
+    check-overlap-different-data: true
+
+# 主机表：
+#
+# 主机表由标记和每个主机阈值子系统使用。
+#
+host:
+  hash-size: 8192
+  prealloc: 5000
+  memcap: 64mb
+
+# IP 对表：
+#
+# 由 xbits 'ippair' 跟踪使用。
+#
+ippair:
+  hash-size: 8192
+  prealloc: 5000
+  memcap: 64mb
+
+# Decoder 设置
+
+decoder:
+  # 已知 Teredo 解码器不完全准确，Teredo 是一种网络协议。Teredo 是 IPv6 转换机制之一，它允许 IPv6 流量通过 IPv4 网络传输。它的主要功能是让无法直接连接到 IPv6 网络的设备能够通过 IPv4 网络访问 IPv6 资源。
+  # 因为它有时会将非 teredo 检测为 teredo。
+  teredo:
+    enabled: true
+    # 端口来查找 Teredo。最多 4 个端口。如果未给出端口，或者
+    # 该值设置为 'any'，Teredo 检测在 _all_ UDP 数据包上运行。
+    ports: $TEREDO_PORTS # syntax: '[3544, 1234]' or '3533' or 'any'.
+
+  # VXLAN 解码器最多分配给 4 个 UDP 端口。默认情况下，只有
+  # IANA 分配的端口 4789 已启用。
+  vxlan:
+    enabled: true
+    ports: $VXLAN_PORTS # syntax: '[8472, 4789]' or '4789'.
+
+  # Geneve 解码器最多分配给 4 个 UDP 端口。默认情况下，只有
+  # IANA 分配的端口 6081 已启用。
+  geneve:
+    enabled: true
+    ports: $GENEVE_PORTS # syntax: '[6081, 1234]' or '6081'.
+
+  # 数据包的最大解码器层数
+  # max-layers: 16
+
+##
+## 性能调优和分析
+##
+
+# 检测引擎构建内部签名组。引擎
+# 允许我们指定要使用的配置文件，以管理内存
+# 保持良好性能的有效方式。对于配置文件关键字你
+# 可以使用单词“low”，“medium”，“high”或“custom”。如果你用custom，
+# 确保在“custom-values”部分定义值。
+# 通常你会选择 medium/high/low.
+#
+# “sgh mpm-context”，表示暂存应如何为 mpm 上下文分配
+# 签名组。 “single”表示使用单一上下文
+# 所有签名组头部。 “full”表示每个 MPM 上下文
+# 组长。 “auto”让引擎决定上下文的分布
+# 根据引擎从每个模式中收集的信息
+# 组长。
+#
+# 使用 inspection-recursion-limit 选项来限制递归调用
+# 在内容检查代码中。 对于某些有效载荷-SIG 组合，我们
+# 最终可能会在内容检查代码中花费太多时间。
+# 如果指定的参数为 0，则引擎使用内部定义的
+# 默认限制。 如果未指定值，则对递归没有限制。
+detect:
+  profile: medium
+  custom-values:
+    toclient-groups: 3
+    toserver-groups: 25
+  sgh-mpm-context: auto
+  inspection-recursion-limit: 500
+  # 如果设置为 yes，则在捕获后将进行签名的加载
+  # 已启动。这将限制 IPS 模式下的停机时间。
+  #delayed-detect: yes
+
+  prefilter:
+    # 默认预过滤设置。“mpm” 仅创建 MPM/fast_pattern
+    # 引擎。“auto”还为其他关键字设置了预过滤引擎。
+    # 使用 --list-keywords=all 查看哪些关键词支持预过滤。
+    default: mpm
+
+  # 上面的分组值控制每个创建的组数
+  # 方向。端口白名单会强制该端口获取自己的组。
+  # 非常常见的端口将受益，以及许多昂贵的端口
+  # 规则。
+  grouping:
+    #tcp-whitelist: 53, 80, 139, 443, 445, 1433, 3306, 3389, 6666, 6667, 8080
+    #udp-whitelist: 53, 135, 5060
+
+  profiling:
+    # 记录每个数据包通过预过滤器阶段的规则
+    # 默认值为关闭。阈值设置决定了规则的数量
+    # 必须已通过该规则的预过滤器才能触发
+    # 日志记录。
+    #inspect-logging-threshold: 200
+    grouping:
+      dump-to-disk: false
+      include-rules: false      # 非常冗长
+      include-mpm-stats: false
+
+# 选择你想要运行的多模式算法进行扫描/搜索
+# 在引擎中。
+#
+# 支持的算法有：
+# “ac” - Aho-Corasick，默认实现
+# “ac-bs” - Aho-Corasick，减少内存实现
+# “ac-ks” - Aho-Corasick，“Ken Steele”变体
+# “hs” - Hyperscan，在构建 Hyperscan 支持时可用
+#
+# 如果 Hyperscan 为
+# 可用，否则为“AC”。
+#
+# 你选择的 mpm 也决定了 mpm 上下文的分布
+# 签名组，由 conf 指定 - “detect.sgh-mpm-context”。
+# 选择 “ac” 作为 mpm 需要 “detect.sgh-mpm-context”
+# 要设置为“single”，因为 ac 的内存要求，除非
+# 规则集足够小，可以放入内存中，在这种情况下，可以
+# 将“full”与“ac”一起使用。 其余的 mpms 可以在“完整”模式下运行。
+
+#mpm-algo: auto
+mpm-algo: hs
+
+# 选择要用于单模式搜索的匹配算法。
+#
+# 支持的算法是 “bm” （Boyer-Moore） 和 “hs” （仅限 Hyperscan
+# 如果 Suricata 已构建支持 Hyperscan，则可用）。
+#
+# 默认值 “auto” 将使用 “hs” （如果可用），否则使用 “bm”。
+
+spm-algo: hs
+
+# Suricata 是多线程的。在这里，线程可以受到影响。
+threading:
+  set-cpu-affinity: yes
+  # 调整线程的 cpu 亲和性。每个线程系列都可以绑定
+  # 到特定的 CPU。
+  #
+  # 这 2 种适用于所有运行模式：
+  # management-cpu-set 用于流超时处理，计数器
+  # worker-cpu-set 用于 'worker' 线程
+  #
+  # 此外，对于 autofp，这些适用：
+  # receive-cpu-set 用于捕获线程
+  # verdict-cpu-set 用于 IPS 判定线程
+  #
+  cpu-affinity:
+    - management-cpu-set:
+        cpu: [ 4,6 ]  # 在关联设置中仅包含这些 CPU
+    - receive-cpu-set:
+        cpu: [ 8,10,12,14 ]  # 在关联设置中仅包含这些 CPU
+    - worker-cpu-set:
+        cpu: [ 16,18,20,22,24,26,28,30 ]
+        mode: "exclusive"
+        # 如果明确使用 8 个线程，那么不要使用如下比率
+        # detect-thread-ratio 变量：
+        # threads: 8
+        prio:
+          low: [ 4,6 ]
+          medium: [ 16,18,20,22,24,26,28,30 ]
+          high: [ 8,10,12,14 ]
+          default: "medium"
+    - verdict-cpu-set:
+        cpu: [ 32,34,36,38 ]
+        prio:
+          default: "high"
+  #
+  # 默认情况下，Suricata 为每个可用的 CPU/CPU 核心创建一个“检测”线程。
+  # 此设置允许控制此行为。比率设置为 2 将
+  # 为每个 CPU/CPU 核心创建 2 个检测线程。所以对于双核CPU来说，这个
+  # 将导致 4 个检测线程。如果使用的值小于 1，则线程数较少
+  # 已创建。因此，在双核 CPU 上，设置为 0.5 会导致 1 次检测
+  # 正在创建的线程。无论设置如何，至少 1 次检测
+  # 线程将始终被创建。
+  #
+  detect-thread-ratio: 1.0
+  #
+  # 默认情况下，每个线程堆栈的大小保留为其默认设置。如果
+  # 默认线程堆栈大小太小，使用以下配置
+  # 设置以更改大小。请注意，如果任何线程的堆栈大小不能
+  # 设置为此值，将发生致命错误。
+  #
+  # 一般情况下，每个线程的堆栈大小不应超过 8MB。
+  stack-size: 8mb
+
+# Luajit 有一个奇怪的内存需求，它的“状态”需要在
+# 进程内存的前 2G。
+#
+# 'luajit.states' 用于控制预分配的状态数量。
+# 状态使用：每个检测脚本：每个检测线程 1 个。每个输出脚本：1 个
+# 脚本。
+luajit:
+  states: 128
+
+# 性能分析设置。仅当 Suricata 是用
+# --enable-profiling 配置标志。
+#
+profiling:
+  # 对每个第 X 个数据包运行性能分析。默认值为 1，这意味着我们
+  # 对每个数据包进行分析。如果设置为 1024，则对每个数据包进行分析
+  # 1024 收到。采样率必须是 2 的幂。
+  #sample-rate: 1024
+
+  # 规则剖析
+  rules:
+
+    # 可以在此处禁用分析，但它仍然会有一个
+    # 编译后对性能的影响。
+    enabled: no
+    filename: rule_perf.log
+    append: yes
+    # Set active to yes to enable rules profiling at start
+    # if set to no (default), the rules profiling will have to be started
+    # via unix socket commands.
+    #active:no
+
+    # 排序选项：ticks、avgticks、checks、matches、maxticks
+    # 如果注释掉，将使用所有排序选项。
+    #sort: avgticks
+
+    # 限制在退出时显示统计信息的 sid 数量（每次排序）。
+    limit: 10
+
+    # 输出到 json
+    json: yes
+
+  # 每个关键词的分析
+  keywords:
+    enabled: no
+    filename: keyword_perf.log
+    append: yes
+
+  prefilter:
+    enabled: no
+    filename: prefilter_perf.log
+    append: yes
+
+  # 每个规则组分析
+  rulegroups:
+    enabled: no
+    filename: rule_group_perf.log
+    append: yes
+
+  # 数据包分析
+  packets:
+
+    # 可以在此处禁用分析，但它仍然会有一个
+    # 编译后对性能的影响。
+    enabled: no
+    filename: packet_stats.log
+    append: yes
+
+    # 每个数据包的 CSV 输出
+    csv:
+
+      # 可以在此处禁用输出，但它仍然会有一个
+      # 编译后对性能的影响。
+      enabled: no
+      filename: packet_stats.csv
+
+  # 锁定的分析。仅在 Suricata 构建时可用
+  # --enable-profiling-locks
+  locks:
+    enabled: no
+    filename: lock_stats.log
+    append: yes
+
+  pcap-log:
+    enabled: no
+    filename: pcaplog_stats.log
+    append: yes
+
+##
+## Netfilter 集成
+##
+
+# 在 NFQ 内联模式下运行时，可以使用模拟的
+# 非终端 NFQUEUE 判定。
+# 这允许通过此规则将所有需要的数据包发送到 Suricata：
+#        iptables -I FORWARD -m mark ! --mark $MARK/$MASK -j NFQUEUE
+# 在下面，您可以拥有标准过滤规则集。激活
+# 此模式，您需要将 mode 设置为 'repeat'
+# 如果您希望在 ACCEPT 决定后将数据包发送到另一个队列
+# 将模式设置为 'route' 并设置 next-queue 值.
+# 在 Linux >= 3.1 中，您可以将 batchcount 设置为 > 1 以提高性能
+# 在发送判定之前处理多个数据包（仅限 worker runmode）。
+# 在 Linux >= 3.6 上，您可以将 fail-open 选项设置为 yes 以获得内核
+# 如果 Suricata 无法跟上步伐，请接受数据包。
+# 旁路标记和掩码可用于实现 NFQ 旁路。如果旁路标记是
+# 设置则激活 NFQ 旁路。Suricata 将设置旁路标记/掩码
+# 在需要绕过的流的数据包上。Netfilter 规则集必须
+# 一旦数据包被标记，就直接接受流的所有数据包。
+nfq:
+#  mode: accept
+#  repeat-mark: 1
+#  repeat-mask: 1
+#  bypass-mark: 1
+#  bypass-mask: 1
+#  route-queue: 2
+#  batchcount: 20
+#  fail-open: yes
+
+#nflog 支持
+nflog:
+    # netlink 组播组
+    # （与 iptables --nflog-group 参数相同）
+    # Group 0 被内核使用，所以你不能使用它
+  - group: 2
+    # netlink 缓冲区大小
+    buffer-size: 18432
+    # 在此处放置默认值
+  - group: default
+    # 设置在内核内部排队的数据包数量
+    qthreshold: 1
+    # 设置在内核队列中刷新数据包前的延迟
+    qtimeout: 100
+    # netlink 最大缓冲区大小
+    max-size: 20000
+
+##
+## 高级捕获选项
+##
+
+# 影响数据包捕获的常规设置
+capture:
+  # 关闭网卡卸载。当 Suricata 退出时，它将恢复。
+  # 默认开启。
+  #disable-offloading: true
+  #
+  # 禁用校验和验证。与在
+  # 命令行。
+  #checksum-validation: none
+
+# Netmap 支持
+#
+# Netmap 直接在驱动程序中使用 NIC 运行，因此您需要 FreeBSD 11+，它具有
+# 内置 Netmap 支持或编译安装 Netmap 模块并适当
+# 适用于 Linux 系统的 NIC 驱动程序。
+# 要达到最大吞吐量，请禁用所有接收、分段、
+# checksum- 卸载您的网卡（使用 ethtool 或类似工具）。
+# 禁用 TX 校验和卸载对于连接操作系统端点是*必需的*
+# 使用网卡端点。
+# 您可以在 https://github.com/luigirizzo/netmap 找到更多信息
+#
+netmap:
+   # 要指定操作系统端点，请在末尾添加加号（例如“eth0+”）
+ - interface: eth2
+   # 捕获线程数。“auto”使用接口上的RSS队列数。
+   # 警告：除非 RSS 哈希是对称的，否则这将导致
+   # 准确性问题。
+   #threads: auto
+   # 您可以使用以下变量来激活 netmap tap 或 IPS 模式。
+   # 如果复制模式设置为 ips 或 tap，则进入当前流量
+   # 接口将被复制到 copy-iface 接口。如果设置了 'tap'，则
+   # 复制完成。如果设置了“ips”，则匹配“丢弃”操作的数据包
+   # 不会被复制。
+   # 将操作系统指定为 copy-iface（以便操作系统可以路由数据包或转发
+   # 到在同一台机器上运行的服务）在末尾添加一个加号
+   # （例如 “copy-iface： eth0+”）。别忘了设置一个对称的 eth0+ -> eth0
+   # 用于返回数据包。如果出现以下情况，接口上的硬件校验和必须*关闭*，
+   # 使用操作系统端点（例如，对于 FreeBSD，为 'ifconfig eth0 -rxcsum -txcsum -rxcsum6 -txcsum6'
+   # 或者 Linux 的 'ethtool -K eth0 tx off rx off'）。
+   #copy-mode: tap
+   #copy-iface: eth3
+   # 设置为 yes 以禁用混杂模式
+   # disable-promisc： 否
+   # 为接口选择校验和校验模式。目前
+   # 由于以下原因，某些数据包可能具有无效的校验和
+   # 正在卸载到网卡的校验和计算。
+   # 可能的值为：
+   # - yes： 校验和验证是强制的
+   # - 否：校验和验证被禁用
+   # - auto： Suricata 使用统计方法来检测何时
+   # 使用校验和卸载。
+   # 警告： 'checksum-validation' 必须设置为 yes 才能进行任何验证
+   #checksum-checks: auto
+   # BPF 过滤器应用于此接口。pcap 过滤器语法在此处适用。
+   #bpf-filter: port 80 or udp
+ #- interface: eth3
+   #threads: auto
+   #copy-mode: tap
+   #copy-iface: eth2
+   # 在此处放置默认值
+ - interface: default
+
+# PF_RING 配置：用于原生 PF_RING 支持
+# 更多信息请参见 http://www.ntop.org/products/pf_ring/
+pfring:
+  - interface: eth0
+    # 接收线程数。如果设置为“自动”，Suricata 将首先尝试
+    # 使用 CPU（核心）计数，否则使用 RSS 队列计数。
+    threads: auto
+
+    # 默认 clusterid。 PF_RING 将根据流量对数据包进行负载均衡。
+    # 所有将参与的线程/进程都需要具有相同的
+    # clusterid。
+    cluster-id: 99
+
+    # 默认PF_RING集群类型。PF_RING可以对每个流进行负载均衡。
+    # 可能的值为：
+    # - cluster_flow:               6-tuple: <src ip, src_port, dst ip, dst port, proto, vlan>
+    # - cluster_inner_flow:         6-tuple: <src ip, src port, dst ip, dst port, proto, vlan>
+    # - cluster_inner_flow_2_tuple: 2-tuple: <src ip,           dst ip                       >
+    # - cluster_inner_flow_4_tuple: 4-tuple: <src ip, src port, dst ip, dst port             >
+    # - cluster_inner_flow_5_tuple: 5-tuple: <src ip, src port, dst ip, dst port, proto      >
+    # - cluster_round_robin (NOT RECOMMENDED)
+    cluster-type: cluster_flow
+
+    # 此接口的 BPF 过滤器
+    #bpf-filter: tcp
+
+    # 如果设置了旁路，则在支持的情况下激活PF_RING硬件旁路
+    # 通过网络接口。Suricata 将指示接口绕过
+    # 需要绕过的流的所有未来数据包。
+    #bypass: yes
+
+    # 为接口选择校验和校验模式。目前
+    # 由于以下原因，某些数据包可能具有无效的校验和
+    # 正在卸载到网卡的校验和计算。
+    # 可能的值为：
+    #  - rxonly: 仅计算网卡接收的数据包的校验和。
+    #  - yes: 强制执行校验和验证
+    #  - no: 校验和验证已禁用
+    #  - auto: Suricata 使用统计方法来检测何时
+    # 使用校验和卸载。（默认）
+    # 警告：'checksum-validation' 必须设置为 yes 才能进行任何验证
+    #checksum-checks: auto
+  # 第二个接口
+  #- interface: eth1
+  #  threads: 3
+  #  cluster-id: 93
+  #  cluster-type: cluster_flow
+  # 在此处放置默认值
+  - interface: default
+    #threads: 2
+
+# 对于 FreeBSD ipfw（8） divert（4） 支持。
+# 请确保您已ipfw_load=“YES”和ipdivert_load=“YES”
+# 在 /etc/loader.conf 或 kldload 中输入相应的内核模块。
+# 此外，你需要有一个 ipfw 规则让引擎看到
+# 来自IPFW的数据包。 例如：
+#
+# IPFW 添加 100 将 8000 IP 从 any 转移到 any
+#
+# 注意此示例使用“8000”——此数字必须与值相加
+# 你传递了命令行，即 -d 8000
+#
+ipfw:
+
+  # 按照指定的 ipfw 规则号重新注入数据包。 此配置
+  # option 是 ipfw 规则编号 AT 规则处理继续
+  # 在引擎完成后的 IPFW 处理系统中
+  # 检查数据包是否被接受。 如果未指定规则编号，
+  # 接受的数据包将在它们输入的转移规则处重新注入
+  # 和 IPFW 规则处理继续进行。 不进行任何检查以进行验证
+  # 这个规则是有道理的，所以必须注意避免 IPFW 中的循环。
+  #
+  ## 以下示例告诉引擎重新注入数据包
+  # 回到 ipfw 防火墙 AT 规则编号 5500：
+  #
+  # ipfw-reinjection-rule-number: 5500
+
+
+napatech:
+    # 当 use_all_streams 设置为 “yes” 时，初始化代码会查询
+    # Napatech 服务适用于所有配置的流，并监听所有流。
+    # 当设置为 “no” 时，将使用 streams 配置数组。
+    #
+    # 此选项需要运行适当的 NTPL 命令来创建
+    # 在运行 Suricata 之前所需的流。
+    #use-all-streams: no
+
+    # 当自动配置被禁用时，或者当和线程时，要监听的流
+    # CPU-AFFINITY 已禁用。 这可以是：
+    # 单个流（例如流：[0]）
+    # 或
+    # 流的范围（例如流：[“0-3”]）
+    #
+    streams: ["0-3"]
+
+    # 可以启用流统计信息以提供细粒度的数据包和字节计数器
+    # 对于配置的每个线程/流。
+    #
+    enable-stream-stats: no
+
+    # 启用自动配置后，将创建并分配流
+    # 自动到线程所在的 NUMA 节点。 如果 cpu-affinity
+    # 在线程部分中启用。 然后，将创建流
+    # 根据 worker-cpu-set 中指定的 worker 线程数。
+    # 否则，使用 streams 数组来定义流。
+    #
+    # 此选项主要用于支持旧配置。
+    #
+    # 此选项不能与“use-all-streams”同时使用
+    # 或“硬件旁路”。
+    #
+    auto-config: yes
+
+    # 启用硬件级流量旁路。
+    #
+    hardware-bypass: yes
+
+    # 启用内联操作。 启用后，到达给定端口的流量为
+    # 经过 Suricata 分析后，自动转发出其对等端口。
+    #
+    inline: no
+
+    # Ports 表示哪些 Napatech 端口将在自动配置模式下使用。
+    # 这些是将在
+    # 正在分发到流的流量。
+    #
+    # 启用硬件旁路后，必须将端口配置为一个分段。
+    # 指定上下游流量到达的端口。
+    # 此信息对于硬件正确处理流程是必需的。
+    #
+    # 使用 tap 配置时，其中一个端口将接收入站流量
+    # 对于网络，另一个将接收出站流量。上的两个端口
+    # 给定的段必须位于同一网络适配器上。
+    #
+    # 使用 SPAN 端口配置时，上下游流量
+    # 到达单个端口。这是通过设置 的两侧来配置的
+    # 段来引用同一端口。 （例如，0-0 配置 SPAN 端口
+    # 端口 0）。
+    #
+    # 端口段按以下形式指定：
+    #    ports: [0-1,2-3,4-5,6-6,7-7]
+    #
+    # 对于遗留系统，当禁用硬件旁路时，可以在任何
+    # 以下方式：
+    #
+    #   单个端口的列表（例如 ports: [0,1,2,3])
+    #
+    #   端口范围（例如 ports: [0-3])
+    #
+    # “all” 表示所有端口将合并在一起
+    # （例如 ports: [all])
+    #
+    # 如果关闭自动配置，则该参数无效。
+    #
+    ports: [0-1,2-3]
+
+    # 当启用自动配置时，hashmode 指定了
+    # 确定给定数据包要传送到哪个流。
+    # 这可以是任何有效的Napatech NTPL hashmode命令。
+    #
+    # 最常见的哈希模式命令是:  hash2tuple, hash2tuplesorted,
+    # hash5tuple, hash5tuplesorted and roundrobin.
+    #
+    # 参见 Napatech NTPL 文档、其他哈希模式及其使用详情。
+    #
+    # 如果关闭自动配置，则该参数无效。
+    #
+    hashmode: hash5tuplesorted
+
+##
+## 配置 Suricata 以加载 Suricata-Update 托管规则。
+##
+
+default-rule-path: /var/lib/prism/rules
+
+rule-files:
+  - prism.rules
+
+##
+## 辅助配置文件。
+##
+
+classification-file: /etc/prism/classification.config
+reference-config-file: /etc/prism/reference.config
+threshold-file: /etc/prism/threshold.config
+
+##
+## 包含其他配置
+##
+
+# 包含：此处包含的文件将像内联一样进行处理
+# 在此配置文件中。具有相对路径名的文件将是
+# 在与此配置文件相同的目录中搜索。您可以
+# 也使用绝对路径名。
+#include:
+#  - include1.yaml
+#  - include2.yaml

@@ -1,0 +1,8 @@
+说明：20241018
+
+"column" : {"timestamp":"varchar(64)","u_timestamp":"null","flow_id":"bigint(20)"}
+列值 说明：
+timestamp 设置类型为 varchar(64)
+u_timestamp 设置 忽略该列，将在bvm_data 的 flow_20241018 表中没有改列值
+flow_id 设置该列类型为 bigint(20)
+

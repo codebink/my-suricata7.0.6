@@ -1,0 +1,54 @@
+license_tools 使用方法：
+
+yum install libconfig-devel
+
+首先设置 license.cfg 中  validday  有效天数.
+
+./license_tool -f ./license.cfg    //生成 license.cfg 文件.
+
+./license_valid  //验证当前硬件与 license.cfg 是否匹配，
+生成 license_valid_result 中保存验证结果信息.
+
+./license_valid -q  //表示安静模式,将 验证结果输出到 stderr.
+
+PRISM_LICENSE_VALID:1           //1 表示当前license 正常.
+PRISM_LICENSE_DATE_EXPIRE:0     //0 表示当前license 没有过期..
+PRISM_LICENSE_HW_CHANGE:0       //0 表示当前硬件 没有发生改变.
+==========================================================================
+cp ./prism_lib64.conf  /etc/ld.so.conf.d/prism_lib64.conf
+ldconfig 
+
+20240810 license 采用隐写技术. 
+license 当前生成2个文件. license.cfg 和 隐写文件 .prism
+.prism 保存了 md5sum ./license.cfg 文件的md5值，因为采用隐写技术，故无法直接看到md5值.
+
+生成license.cfg 方法：
+先删除 licesen.cfg 中 
+{
+    firsttime="20240812";
+}
+和 清空 hardware->values 项内容，例如：仅保留：
+values=();
+
+
+生成license.cfg 文件
+./license_tool -f ./license.cfg  //生成license.cfg 文件. 
+
+显示license.cfg md5 值：
+./license_tool -m ./license.cfg
+
+生成隐写文件..prism
+./license_tool -e 
+
+
+验证： 程序一般用安静模式即可判断license 有效性：
+./license_valid -q   //安静模式，
+PRISM_LICENSE_VALID:1  //1 表示licese 正常有效，0表示无效. 如果无效则 下面显示无效原因.
+
+
+./license_valid      //普通模式.
+
+20240821  //添加liblicense_valid.so  并设置license.cfg .prism license_valid_result 固定到 /etc/prism/位置。
+验证方法 ./mytest
+
+
